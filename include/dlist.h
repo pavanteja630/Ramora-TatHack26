@@ -28,6 +28,8 @@ static inline void dlist_delete(struct DList* node){
     struct DList* next = node->next;
     prev->next = next;
     next->prev = prev;
+    node->prev = node;
+    node->next = node;
 }
 
 #endif

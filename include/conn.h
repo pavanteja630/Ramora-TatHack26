@@ -11,6 +11,7 @@ extern struct g_data gd;
 struct Conn {
     int fd;
     uint8_t want_close;
+    uint8_t authenticated;
     struct buf* rbuf;
     struct buf* wbuf;
 

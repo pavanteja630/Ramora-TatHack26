@@ -44,16 +44,32 @@ void handle_request(struct Conn* conn){
     offset += HEADER_SIZE;
 
     char* cmd = get_string(conn->rbuf, &offset);
+    gd.stat_total_commands++;
+
+    // Authentication check
+    if (requirepass[0] != '\0' && !conn->authenticated){
+        if (strcasecmp(cmd, "AUTH") != 0){
+            free(cmd);
+            int rv = response_code(conn->wbuf, RES_ERR);
+            rv &= response_u32(conn->wbuf, 0);
+            if (rv == 0){
+                msg("handle_request (server.c): buffer size limit exceeded");
+                conn->want_close = 1;
+            }
+            return;
+        }
+    }
 
     int good_request = 0;
     for (size_t i=0; i<command_list_len; ++i){
-        if (strcmp(cmd, command_list[i].cmd) == 0 && nstr == command_list[i].nstr){
+        if (strcasecmp(cmd, command_list[i].cmd) == 0 && nstr == command_list[i].nstr){
             good_request = 1;
             int rv = command_list[i].handler(conn, offset);
             if (rv == 0){
                 msg("handle_request (server.c): buffer size limit exceeded");
                 conn->want_close = 1;
             }
+            break;
         }
     }
     free(cmd);
@@ -181,6 +197,7 @@ int main(int argc, char* argv[]){
     }
 
     note("Starting Server - Welcome to Ramora");
+    note(cosmo_polo_telemetry());
     signal(SIGINT, handle_sigint);
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
@@ -192,6 +209,7 @@ int main(int argc, char* argv[]){
 
     int val = 1;
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &val, sizeof(val));
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &val, sizeof(val));
     int sz = 1<<15;
     setsockopt(fd, SOL_SOCKET, SO_SNDBUF, &sz, sizeof(sz));
     setsockopt(fd, SOL_SOCKET, SO_RCVBUF, &sz, sizeof(sz));
@@ -254,6 +272,9 @@ int main(int argc, char* argv[]){
         log_close();
         return 0;
     }
+
+    load_snapshot(SNAPSHOT_PATH);
+    time_t last_save_time = time(NULL);
 
     while (run){
         int timeout_ms = smallest_remaining_time();
@@ -326,15 +347,26 @@ int main(int argc, char* argv[]){
                 }
             }
 
-            int max_expiration_count = 10;
+            int max_expiration_count = 100;
             int expired_count = 0;
             uint64_t now_ms = get_monotonic_msec();
             while (expired_count < max_expiration_count && gd.ttl_heap.sz > 0 && gd.ttl_heap.arr[0].expiration_time <= now_ms){
-                del_Entry(container_of(gd.ttl_heap.arr[0].ref, struct Entry, heap_idx)->key->data);
+                del_Entry(bufstart(container_of(gd.ttl_heap.arr[0].ref, struct Entry, heap_idx)->key));
                 expired_count++;
+            }
+
+            if (SAVE_INTERVAL_SEC > 0){
+                time_t now_sec = time(NULL);
+                if (now_sec >= last_save_time + SAVE_INTERVAL_SEC){
+                    save_snapshot(SNAPSHOT_PATH);
+                    last_save_time = now_sec;
+                }
             }
         }
     }
+
+    note("Saving snapshot before shutdown");
+    save_snapshot(SNAPSHOT_PATH);
 
     note("Freeing Hash Map");
     free_HMap(&gd.kv_db);
@@ -350,12 +382,12 @@ int main(int argc, char* argv[]){
     heap_free(&gd.ttl_heap);
 
     note("Freeing allocated memory");
-    for (size_t i=0; i<fd2conn.sz; ++i){
+    for (size_t i=0; i<fd2conn.cap; ++i){
         if (fd2conn.data[i]){
-            close(i);
+            close((int)i);
             hard_free_conn(fd2conn.data[i]);
             fd2conn.data[i] = NULL;
-            epoll_ctl(epfd, EPOLL_CTL_DEL, i, 0);
+            epoll_ctl(epfd, EPOLL_CTL_DEL, (int)i, 0);
         }
     }
     free_vector(&fd2conn);

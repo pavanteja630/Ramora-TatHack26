@@ -18,7 +18,7 @@ static size_t heap_parent(size_t pos){
 
 static void heap_up(struct HeapItem* arr, size_t pos){
     struct HeapItem element = arr[pos];
-    while (pos > 0 && arr[heap_parent(pos)].expiration_time > arr[pos].expiration_time){
+    while (pos > 0 && arr[heap_parent(pos)].expiration_time > element.expiration_time){
         arr[pos] = arr[heap_parent(pos)];
         *arr[pos].ref = pos;
         pos = heap_parent(pos);
@@ -29,19 +29,26 @@ static void heap_up(struct HeapItem* arr, size_t pos){
 
 static void heap_down(struct HeapItem* arr, size_t pos, size_t len){
     struct HeapItem element = arr[pos];
-    while(1){
-        size_t min_element = pos;
+    while (1){
         size_t left = heap_left(pos);
         size_t right = heap_right(pos);
-        if (left < len && arr[left].expiration_time < arr[min_element].expiration_time) min_element = left;
-        if (right < len && arr[right].expiration_time < arr[min_element].expiration_time) min_element = right;
+        size_t min_idx = pos;
+        uint64_t min_time = element.expiration_time;
 
-        if (min_element == pos) break;
-        else {
-            arr[pos] = arr[min_element];
-            *arr[pos].ref = pos;
-            pos = min_element;
+        if (left < len && arr[left].expiration_time < min_time){
+            min_idx = left;
+            min_time = arr[left].expiration_time;
         }
+        if (right < len && arr[right].expiration_time < min_time){
+            min_idx = right;
+            min_time = arr[right].expiration_time;
+        }
+
+        if (min_idx == pos) break;
+
+        arr[pos] = arr[min_idx];
+        *arr[pos].ref = pos;
+        pos = min_idx;
     }
     arr[pos] = element;
     *arr[pos].ref = pos;
@@ -100,9 +107,12 @@ int heap_insert(struct Heap* heap, uint64_t expiration_time, size_t* ref){
 }
 
 void heap_delete(struct Heap* heap, size_t pos){
-    heap->arr[pos] = heap->arr[heap->sz - 1];
+    if (pos >= heap->sz) return;
     heap->sz--;
-    if (pos < heap->sz){
-        heap_update(heap->arr, pos, heap->sz);
+    if (pos == heap->sz){
+        return;
     }
+    heap->arr[pos] = heap->arr[heap->sz];
+    *heap->arr[pos].ref = pos;
+    heap_update(heap->arr, pos, heap->sz);
 }

@@ -23,6 +23,12 @@ extern int IDLE_TIMEOUT_MS;
 extern int READ_CHUNK;
 extern int MAX_EVENTS;
 
+extern char requirepass[256];
+extern size_t MAX_MEMORY;
+extern char MAXMEMORY_POLICY[32];
+extern char SNAPSHOT_PATH[1024];
+extern int SAVE_INTERVAL_SEC;
+
 int load_config(const char *path);
 
 #endif

@@ -18,6 +18,7 @@ int init_Entry(struct Entry* entry){
     }
 
     entry->heap_idx = (size_t)-1;
+    dlist_init(&entry->lru_node);
     return 1;
 }
 
@@ -28,7 +29,7 @@ void free_Entry(struct Entry* entry){
 
 int entry_eq(const char* key, struct HNode* node) {
     struct Entry *entry = container_of(node, struct Entry, node);
-    return !bufstrcmp(entry->key, key, strlen(key));
+    return strcmp(bufstart(entry->key), key) == 0;
 }
 
 uint64_t str_hash(const char *data, size_t len) {
@@ -169,13 +170,13 @@ int insert_HMap(struct HMap* hmap, struct HNode* node){
     insert_HTab(hmap->new_tab, node);
 
     if (hmap->is_migrating == 1){
-        if (hmap->migrating_pos == hmap->old_tab->cap){
+        if (hmap->migrating_pos >= hmap->old_tab->cap || hmap->old_tab->size == 0){
             free_HTab(hmap->old_tab);
             hmap->is_migrating = 0;
         }
         else {
             int migration_count = 0;
-            while (migration_count < MIGRATING_LOAD && hmap->old_tab->size > 0){
+            while (migration_count < MIGRATING_LOAD && hmap->old_tab->size > 0 && hmap->migrating_pos < hmap->old_tab->cap){
                 struct HNode** from = &hmap->old_tab->tab[hmap->migrating_pos];
 
                 if (*from == NULL){
@@ -185,6 +186,10 @@ int insert_HMap(struct HMap* hmap, struct HNode* node){
                     insert_HTab(hmap->new_tab, delete_from_HTab(hmap->old_tab, from));
                     migration_count++;
                 }
+            }
+            if (hmap->migrating_pos >= hmap->old_tab->cap || hmap->old_tab->size == 0){
+                free_HTab(hmap->old_tab);
+                hmap->is_migrating = 0;
             }
         }
     }
@@ -253,4 +258,70 @@ void free_HMap(struct HMap* hmap){
         free(hmap->old_tab);
         hmap->old_tab = NULL;
     }
+}
+
+size_t hmap_size(struct HMap* hmap) {
+    if (!hmap) return 0;
+    size_t sz = hmap->new_tab ? hmap->new_tab->size : 0;
+    if (hmap->is_migrating && hmap->old_tab) {
+        sz += hmap->old_tab->size;
+    }
+    return sz;
+}
+
+void hmap_for_each(struct HMap* hmap, void (*cb)(struct Entry* entry, void* arg), void* arg) {
+    if (!hmap) return;
+    if (hmap->new_tab && hmap->new_tab->tab) {
+        for (size_t i = 0; i < hmap->new_tab->cap; ++i) {
+            struct HNode* curr = hmap->new_tab->tab[i];
+            while (curr != NULL) {
+                struct HNode* next = curr->next;
+                struct Entry* entry = container_of(curr, struct Entry, node);
+                cb(entry, arg);
+                curr = next;
+            }
+        }
+    }
+    if (hmap->is_migrating && hmap->old_tab && hmap->old_tab->tab) {
+        for (size_t i = hmap->migrating_pos; i < hmap->old_tab->cap; ++i) {
+            struct HNode* curr = hmap->old_tab->tab[i];
+            while (curr != NULL) {
+                struct HNode* next = curr->next;
+                struct Entry* entry = container_of(curr, struct Entry, node);
+                cb(entry, arg);
+                curr = next;
+            }
+        }
+    }
+}
+
+uint64_t hmap_scan(struct HMap* hmap, uint64_t cursor, size_t count, void (*cb)(struct Entry* entry, void* arg), void* arg) {
+    if (!hmap || !hmap->new_tab) return 0;
+    size_t cap = hmap->new_tab->cap;
+    if (cursor >= cap) return 0;
+
+    size_t visited = 0;
+    while (cursor < cap && visited < count) {
+        struct HNode* curr = hmap->new_tab->tab[cursor];
+        while (curr != NULL) {
+            struct HNode* next = curr->next;
+            struct Entry* entry = container_of(curr, struct Entry, node);
+            cb(entry, arg);
+            visited++;
+            curr = next;
+        }
+        if (hmap->is_migrating && hmap->old_tab && cursor < hmap->old_tab->cap && cursor >= hmap->migrating_pos) {
+            curr = hmap->old_tab->tab[cursor];
+            while (curr != NULL) {
+                struct HNode* next = curr->next;
+                struct Entry* entry = container_of(curr, struct Entry, node);
+                cb(entry, arg);
+                visited++;
+                curr = next;
+            }
+        }
+        cursor++;
+    }
+    if (cursor >= cap) return 0;
+    return cursor;
 }

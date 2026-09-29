@@ -11,6 +11,14 @@ struct g_data {
     struct Heap ttl_heap;
     struct DList conn_pool;
     int pooled_conn_count;
+    struct DList lru_list;
+    size_t used_memory;
+    int connected_clients;
+    uint64_t stat_hits;
+    uint64_t stat_misses;
+    uint64_t stat_total_connections;
+    uint64_t stat_total_commands;
+    uint64_t start_time_sec;
 };
 
 int init_g_data(struct g_data* gd);

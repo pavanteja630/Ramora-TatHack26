@@ -25,6 +25,7 @@ BINDIR := $(PREFIX)/bin
 SERVER_BIN := ramora-server
 CLIENT_BIN := ramora-client
 TEST_BIN   := ramora-test
+SUITE_BIN  := ramora-suite
 
 # ==========================
 # Sources
@@ -50,18 +51,22 @@ CLIENT_SRCS := \
 TEST_SRCS := \
 	$(TEST_DIR)/test.c
 
+SUITE_SRCS := \
+	$(TEST_DIR)/test_suite.c
+
 # ==========================
 # Objects
 # ==========================
 SERVER_OBJS := $(SERVER_SRCS:%.c=$(BUILD_DIR)/%.o)
 CLIENT_OBJS := $(CLIENT_SRCS:%.c=$(BUILD_DIR)/%.o)
 TEST_OBJS   := $(TEST_SRCS:%.c=$(BUILD_DIR)/%.o)
+SUITE_OBJS  := $(SUITE_SRCS:%.c=$(BUILD_DIR)/%.o)
 
 # ==========================
 # Default target
 # ==========================
 .PHONY: all
-all: $(SERVER_BIN) $(CLIENT_BIN) $(TEST_BIN)
+all: $(SERVER_BIN) $(CLIENT_BIN) $(TEST_BIN) $(SUITE_BIN)
 
 # ==========================
 # Compile rules
@@ -82,10 +87,26 @@ $(CLIENT_BIN): $(CLIENT_OBJS)
 $(TEST_BIN): $(TEST_OBJS)
 	$(CC) $^ -o $@ $(LDFLAGS)
 
+$(SUITE_BIN): $(SUITE_OBJS)
+	$(CC) $^ -o $@ $(LDFLAGS)
+
+# ==========================
+# Test targets
+# ==========================
+.PHONY: test
+test: all
+	./$(SUITE_BIN)
+
+.PHONY: asan
+asan: clean
+	$(MAKE) CFLAGS="-Wall -Wextra -O1 -g -fsanitize=address,undefined -Iinclude" LDFLAGS="-fsanitize=address,undefined" all
+	./$(SUITE_BIN)
+
 # ==========================
 # Cleanup
 # ==========================
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR)
-	rm -f $(SERVER_BIN) $(CLIENT_BIN) $(TEST_BIN)
+	rm -f $(SERVER_BIN) $(CLIENT_BIN) $(TEST_BIN) $(SUITE_BIN)
+	rm -f *.rdb *.log

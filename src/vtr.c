@@ -1,14 +1,17 @@
 #include "vtr.h"
+#include <string.h>
 
 int resize_vector(struct vector* vtr){
-    void** new_data = realloc(vtr->data, vtr->cap * 2 * sizeof(void*));
+    size_t new_cap = vtr->cap * 2;
+    void** new_data = realloc(vtr->data, new_cap * sizeof(void*));
     if (new_data == NULL){
         msg("resize_vector (vtr.c): realloc");
         return 0;
     }
 
+    memset(new_data + vtr->cap, 0, (new_cap - vtr->cap) * sizeof(void*));
     vtr->data = new_data;
-    vtr->cap *= 2;
+    vtr->cap = new_cap;
     return 1;
 }
 

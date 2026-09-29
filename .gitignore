@@ -2,3 +2,6 @@ build/
 ramora-client
 ramora-server
 ramora-test
+ramora-suite
+*.rdb
+*.log
